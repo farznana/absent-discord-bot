@@ -363,4 +363,4 @@ async def setup_absent(ctx):
 # ==============================================================================
 # 5. RUN BOT (DIRECT TOKEN)
 # ==============================================================================
-bot.run("MTU2NjgyMDk1MDE5MDU5NjE2OQ.Gx8yLC.2ZoSEvZdBAJEfIepcOEMELia2Lrgt3ZOeOi7_k")
+bot.run(os.environ.get("DISCORD_TOKEN"))
