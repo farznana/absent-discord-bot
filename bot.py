@@ -357,6 +357,6 @@ async def setup_absent(ctx):
             pass
 
 # ==============================================================================
-# 5. RUN BOT (UPDATED TOKEN)
+# 5. RUN BOT (SECURE ENVIRONMENT VARIABLE)
 # ==============================================================================
-bot.run(os.environ.get("MTU2NjgyMDk1MDE5MDU5NjE2OQ.GPNGW6.3ytHEOL-ciSQk5gQnaf41q1Ghp_Kw90NhBIetA"))
+bot.run(os.environ.get("DISCORD_TOKEN"))
