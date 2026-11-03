@@ -197,16 +197,17 @@ async def absent(
     target_admin: discord.Member = None
 ):
     global record_counter
+    await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
     
     if user_id not in ALL_ADMINS:
-        await interaction.response.send_message("❌ You are not registered as an admin.", ephemeral=True)
+        await interaction.followup.send("❌ You are not registered as an admin.", ephemeral=True)
         return
         
     admin_to_record = target_admin.id if target_admin else user_id
     
     if admin_to_record not in ALL_ADMINS:
-        await interaction.response.send_message("❌ The specified user is not a registered admin.", ephemeral=True)
+        await interaction.followup.send("❌ The specified user is not a registered admin.", ephemeral=True)
         return
         
     my_emoji = ALL_ADMINS[admin_to_record]
@@ -221,7 +222,7 @@ async def absent(
     }
     
     target_name = target_admin.display_name if target_admin else "yourself"
-    await interaction.response.send_message(f"✅ Absent record added for {target_name}! (Record ID: `{current_id}`)", ephemeral=True)
+    await interaction.followup.send(f"✅ Absent record added for {target_name}! (Record ID: `{current_id}`)", ephemeral=True)
     await update_absent_board(interaction.guild)
 
 @bot.tree.command(name="edit_record", description="Edit an existing absent record's date or time slot")
@@ -231,18 +232,19 @@ async def edit_record(
     new_date: str = None, 
     new_time_slot: str = None
 ):
+    await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
     
     if user_id not in ALL_ADMINS:
-        await interaction.response.send_message("❌ You are not registered as an admin.", ephemeral=True)
+        await interaction.followup.send("❌ You are not registered as an admin.", ephemeral=True)
         return
         
     if record_id not in absent_records:
-        await interaction.response.send_message("❌ Invalid record ID!", ephemeral=True)
+        await interaction.followup.send("❌ Invalid record ID!", ephemeral=True)
         return
         
     if not new_date and not new_time_slot:
-        await interaction.response.send_message("❌ Please provide a new date or time slot to update.", ephemeral=True)
+        await interaction.followup.send("❌ Please provide a new date or time slot to update.", ephemeral=True)
         return
         
     changes = []
@@ -253,7 +255,7 @@ async def edit_record(
         absent_records[record_id]["time"] = new_time_slot.upper()
         changes.append(f"Time -> {new_time_slot.upper()}")
         
-    await interaction.response.send_message(f"✏️ Record ID `{record_id}` updated! ({', '.join(changes)})", ephemeral=True)
+    await interaction.followup.send(f"✏️ Record ID `{record_id}` updated! ({', '.join(changes)})", ephemeral=True)
     await update_absent_board(interaction.guild)
 
 @bot.tree.command(name="cover", description="Cover a shift, change covering admin, or remove cover status")
@@ -267,14 +269,15 @@ async def cover(
     action: str = None,
     target_admin: discord.Member = None
 ):
+    await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
     
     if user_id not in ALL_ADMINS:
-        await interaction.response.send_message("❌ You are not registered as an admin.", ephemeral=True)
+        await interaction.followup.send("❌ You are not registered as an admin.", ephemeral=True)
         return
         
     if record_id not in absent_records:
-        await interaction.response.send_message("❌ Invalid record ID!", ephemeral=True)
+        await interaction.followup.send("❌ Invalid record ID!", ephemeral=True)
         return
         
     chosen_action = action if action else "cover"
@@ -282,7 +285,7 @@ async def cover(
     if chosen_action == "uncover":
         prev_cover_emoji = absent_records[record_id]["cover_emoji"]
         if not prev_cover_emoji:
-            await interaction.response.send_message(f"⚠️ Record ID `{record_id}` doesn't have a cover assigned.", ephemeral=True)
+            await interaction.followup.send(f"⚠️ Record ID `{record_id}` doesn't have a cover assigned.", ephemeral=True)
             return
             
         covering_admin_id = target_admin.id if target_admin else user_id
@@ -290,14 +293,14 @@ async def cover(
             bento_tracker[covering_admin_id] -= 1
             
         absent_records[record_id]["cover_emoji"] = None
-        await interaction.response.send_message(f"🔄 Cover status removed from Record ID `{record_id}`.", ephemeral=True)
+        await interaction.followup.send(f"🔄 Cover status removed from Record ID `{record_id}`.", ephemeral=True)
         await update_absent_board(interaction.guild)
         return
 
     covering_admin_id = target_admin.id if target_admin else user_id
     
     if covering_admin_id not in ALL_ADMINS:
-        await interaction.response.send_message("❌ The specified covering user is not a registered admin.", ephemeral=True)
+        await interaction.followup.send("❌ The specified covering user is not a registered admin.", ephemeral=True)
         return
         
     my_emoji = ALL_ADMINS[covering_admin_id]
@@ -323,28 +326,29 @@ async def cover(
     target_name = target_admin.display_name if target_admin else "You"
 
     if earned_bento:
-        await interaction.response.send_message(f"🍱 Congratulations! {target_name} covered this shift and earned 1 Bento 🍱.", ephemeral=True)
+        await interaction.followup.send(f"🍱 Congratulations! {target_name} covered this shift and earned 1 Bento 🍱.", ephemeral=True)
     elif is_partner_cover:
-        await interaction.response.send_message(f"🤝 Shift covered by partner {target_name}! (No Bento awarded for covering partners).", ephemeral=True)
+        await interaction.followup.send(f"🤝 Shift covered by partner {target_name}! (No Bento awarded for covering partners).", ephemeral=True)
     else:
-        await interaction.response.send_message(f"✅ {target_name} covered this shift!", ephemeral=True)
+        await interaction.followup.send(f"✅ {target_name} covered this shift!", ephemeral=True)
         
     await update_absent_board(interaction.guild)
 
 @bot.tree.command(name="delete_record", description="Delete an absent record from the board without giving bentos")
 async def delete_record(interaction: discord.Interaction, record_id: int):
+    await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
     
     if user_id not in ALL_ADMINS:
-        await interaction.response.send_message("❌ You are not registered as an admin.", ephemeral=True)
+        await interaction.followup.send("❌ You are not registered as an admin.", ephemeral=True)
         return
         
     if record_id not in absent_records:
-        await interaction.response.send_message("❌ Invalid record ID!", ephemeral=True)
+        await interaction.followup.send("❌ Invalid record ID!", ephemeral=True)
         return
         
     deleted_item = absent_records.pop(record_id)
-    await interaction.response.send_message(f"🗑️ Record ID `{record_id}` ({deleted_item['date']} - {deleted_item['time']}) deleted.", ephemeral=True)
+    await interaction.followup.send(f"🗑️ Record ID `{record_id}` ({deleted_item['date']} - {deleted_item['time']}) deleted.", ephemeral=True)
     await update_absent_board(interaction.guild)
 
 @bot.command()
@@ -357,6 +361,6 @@ async def setup_absent(ctx):
             pass
 
 # ==============================================================================
-# 5. RUN BOT (SECURE ENVIRONMENT VARIABLE)
+# 5. RUN BOT (DIRECT TOKEN)
 # ==============================================================================
-bot.run(os.environ.get("DISCORD_TOKEN"))
+bot.run("MTU2NjgyMDk1MDE5MDU5NjE2OQ.Gx8yLC.2ZoSEvZdBAJEfIepcOEMELia2Lrgt3ZOeOi7_k")
