@@ -357,6 +357,6 @@ async def setup_absent(ctx):
             pass
 
 # ==============================================================================
-# 5. RUN BOT
+# 5. RUN BOT (UPDATED TOKEN)
 # ==============================================================================
-bot.run("MTU2NjgyMDk1MDE5MDU5NjE2OQ.GLp3Ic.E21z_1Rhc5NZydP2mjTc2eH-_CDecgODCsVzdo")
+bot.run("MTU2NjgyMDk1MDE5MDU5NjE2OQ.GcMYqe.VjS_hAIGKyR2hQhXwfMJTwFdXjvdTYWQ5HjHfs")
