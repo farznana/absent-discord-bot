@@ -40,7 +40,7 @@ PRESIDENT_ADMINS = {
 VP_ADMINS = {
     1253326811882979329: "💖",  # sweet_manis_ (Vice President)
     1400511932037070921: "🌸",  # aangel1325 (Vice President)
-    1455238315405217893: "☻",   # tequila_qyla. (Vice President)
+    1455238315405217893: "☻",    # tequila_qyla. (Vice President)
     626874233888440330: "🎀",  # inesfgguerreiro (Vice President - Red Ribbon)
     967001330361192520: "🍑",  # just2_peach (Vice President)
     1384881169547530291: "🦄",  # blossiq12 (Vice President)
@@ -130,36 +130,32 @@ async def update_absent_board(guild):
             for time_slot in sorted_times:
                 items = dates_group[date_str][time_slot]
                 
-                paired_items = []
-                single_items = list(items)
+                # Kumpul semua rekod dalam satu masa slot yang sama supaya jadi 1 ID tunggal
+                record_ids = [str(item[0]) for item in items]
+                ids_str = ", ".join(record_ids)
                 
-                if time_slot in SHIFT_PARTNERS and len(items) >= 2:
-                    partner_map = SHIFT_PARTNERS[time_slot]
-                    found_pair = False
-                    for i in range(len(items)):
-                        for j in range(i + 1, len(items)):
-                            emoji_a = items[i][1]['absent_emoji']
-                            emoji_b = items[j][1]['absent_emoji']
+                # Cantumkan emoji admin yang absent
+                absent_emojis = []
+                cover_emojis = []
+                
+                for _, data in items:
+                    ae = data['absent_emoji']
+                    for part in ae.split("&"):
+                        p_clean = part.strip()
+                        if p_clean and p_clean not in absent_emojis:
+                            absent_emojis.append(p_clean)
                             
-                            if partner_map.get(emoji_a) == emoji_b:
-                                paired_items = [items[i], items[j]]
-                                single_items.remove(items[i])
-                                single_items.remove(items[j])
-                                found_pair = True
-                                break
-                        if found_pair:
-                            break
-                
-                if paired_items:
-                    ids_str = f"{paired_items[0][0]}, {paired_items[1][0]}"
-                    emoji_display = f"{paired_items[0][1]['absent_emoji']} & {paired_items[1][1]['absent_emoji']}"
-                    cover_status = paired_items[0][1]['cover_emoji'] or paired_items[1][1]['cover_emoji']
-                    cover_display = f"【{cover_status}】" if cover_status else "【 】"
-                    text_content += f"• (ID: `{ids_str}`) {emoji_display} ▷ {time_slot} {cover_display}\n"
+                    covers = data.get('cover_emoji', [])
+                    if not isinstance(covers, list):
+                        covers = [covers] if covers else []
+                    for c in covers:
+                        if c not in cover_emojis:
+                            cover_emojis.append(c)
 
-                for rid, item in single_items:
-                    cover_display = f"【{item['cover_emoji']}】" if item['cover_emoji'] else "【 】"
-                    text_content += f"• (ID: `{rid}`) {item['absent_emoji']} ▷ {time_slot} {cover_display}\n"
+                emoji_display = " & ".join(absent_emojis)
+                cover_display = f"【{' & '.join(cover_emojis)}】" if cover_emojis else "【 】"
+                
+                text_content += f"• (ID: `{ids_str}`) {emoji_display} ▷ {time_slot} {cover_display}\n"
                 
         embed.description = text_content
 
@@ -211,14 +207,38 @@ async def absent(
         return
         
     my_emoji = ALL_ADMINS[admin_to_record]
+    target_date = date.upper()
+    target_time = time_slot.upper()
+    
+    # Semak sama ada sudah ada rekod untuk tarikh & masa yang sama
+    existing_record_id = None
+    for rid, data in absent_records.items():
+        if data["date"] == target_date and data["time"] == target_time:
+            existing_record_id = rid
+            break
+
+    if existing_record_id:
+        # Jika dah ada, cantumkan emoji ke dalam rekod sedia ada (supaya tak perlu buat ID baru)
+        current_data = absent_records[existing_record_id]
+        current_emojis = [e.strip() for e in current_data['absent_emoji'].split('&')]
+        if my_emoji not in current_emojis:
+            current_emojis.append(my_emoji)
+            current_data['absent_emoji'] = " & ".join(current_emojis)
+            
+        target_name = target_admin.display_name if target_admin else "yourself"
+        await interaction.followup.send(f"✅ Added {target_name} to existing shift record (ID: `{existing_record_id}`).", ephemeral=True)
+        await update_absent_board(interaction.guild)
+        return
+
+    # Kalau belum ada, buat ID baru
     current_id = record_counter
     record_counter += 1
     
     absent_records[current_id] = {
-        "date": date.upper(),
-        "time": time_slot.upper(),
+        "date": target_date,
+        "time": target_time,
         "absent_emoji": my_emoji,
-        "cover_emoji": None
+        "cover_emoji": []  # List kosong untuk tampung max 2 cover
     }
     
     target_name = target_admin.display_name if target_admin else "yourself"
@@ -266,7 +286,7 @@ async def edit_record(
 async def cover(
     interaction: discord.Interaction, 
     record_id: int, 
-    action: str = None,
+    action: str = None, 
     target_admin: discord.Member = None
 ):
     await interaction.response.defer(ephemeral=True)
@@ -281,22 +301,6 @@ async def cover(
         return
         
     chosen_action = action if action else "cover"
-    
-    if chosen_action == "uncover":
-        prev_cover_emoji = absent_records[record_id]["cover_emoji"]
-        if not prev_cover_emoji:
-            await interaction.followup.send(f"⚠️ Record ID `{record_id}` doesn't have a cover assigned.", ephemeral=True)
-            return
-            
-        covering_admin_id = target_admin.id if target_admin else user_id
-        if covering_admin_id in bento_tracker and bento_tracker[covering_admin_id] > 0:
-            bento_tracker[covering_admin_id] -= 1
-            
-        absent_records[record_id]["cover_emoji"] = None
-        await interaction.followup.send(f"🔄 Cover status removed from Record ID `{record_id}`.", ephemeral=True)
-        await update_absent_board(interaction.guild)
-        return
-
     covering_admin_id = target_admin.id if target_admin else user_id
     
     if covering_admin_id not in ALL_ADMINS:
@@ -304,25 +308,59 @@ async def cover(
         return
         
     my_emoji = ALL_ADMINS[covering_admin_id]
+
+    if chosen_action == "uncover":
+        covers = absent_records[record_id].get("cover_emoji", [])
+        if not isinstance(covers, list):
+            covers = [covers] if covers else []
+            
+        if my_emoji not in covers:
+            await interaction.followup.send(f"⚠️ Record ID `{record_id}` does not have a cover assigned by this admin.", ephemeral=True)
+            return
+            
+        covers.remove(my_emoji)
+        absent_records[record_id]["cover_emoji"] = covers
+        
+        if covering_admin_id in bento_tracker and bento_tracker[covering_admin_id] > 0:
+            bento_tracker[covering_admin_id] -= 1
+            
+        await interaction.followup.send(f"🔄 Cover status removed for {my_emoji} from Record ID `{record_id}`.", ephemeral=True)
+        await update_absent_board(interaction.guild)
+        return
+
+    covers = absent_records[record_id].get("cover_emoji", [])
+    if not isinstance(covers, list):
+        covers = [covers] if covers else []
+
+    if len(covers) >= 2 and my_emoji not in covers:
+        await interaction.followup.send("❌ This shift already has the maximum of 2 covering admins!", ephemeral=True)
+        return
+
     is_vp_or_exec = covering_admin_id in VP_AND_EXEC
-    
     record_data = absent_records[record_id]
     shift_time = record_data["time"]
-    absent_emoji = record_data["absent_emoji"]
+    absent_emoji_str = record_data["absent_emoji"]
     
+    # Semak partner cover
     is_partner_cover = False
     if shift_time in SHIFT_PARTNERS:
-        if absent_emoji in SHIFT_PARTNERS[shift_time]:
-            partner_emoji = SHIFT_PARTNERS[shift_time][absent_emoji]
-            if my_emoji == partner_emoji:
+        partner_map = SHIFT_PARTNERS[shift_time]
+        for ae in absent_emoji_str.split("&"):
+            ae_clean = ae.strip()
+            if partner_map.get(ae_clean) == my_emoji:
                 is_partner_cover = True
+                break
 
     earned_bento = False
     if is_vp_or_exec and not is_partner_cover:
-        bento_tracker[covering_admin_id] = bento_tracker.get(covering_admin_id, 0) + 1
-        earned_bento = True
+        if my_emoji not in covers:
+            bento_tracker[covering_admin_id] = bento_tracker.get(covering_admin_id, 0) + 1
+            earned_bento = True
 
-    absent_records[record_id]["cover_emoji"] = my_emoji
+    if my_emoji not in covers:
+        covers.append(my_emoji)
+    absent_records[record_id]["cover_emoji"] = covers
+
     target_name = target_admin.display_name if target_admin else "You"
 
     if earned_bento:
