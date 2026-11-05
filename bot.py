@@ -85,8 +85,16 @@ ABSENT_CHANNEL_ID = 1372224968535834635
 # --- Global Trackers ---
 absent_message_id = None
 absent_records = {}
-bento_tracker = {}  # Tracks earned bentos: {user_id: count}
-record_counter = 1
+# bento_tracker structure: {user_id: {"count": int, "logs": [str], "paid": bool}}
+bento_tracker = {}
+
+def get_next_available_id():
+    """Kitar semula ID: Cari nombor kecil pertama yang kosong"""
+    existing_ids = set(absent_records.keys())
+    candidate = 1
+    while candidate in existing_ids:
+        candidate += 1
+    return candidate
 
 @bot.event
 async def on_ready():
@@ -112,7 +120,7 @@ async def update_absent_board(guild):
         embed.description = "No upcoming leave or absent records. Great job everyone!\n"
     else:
         dates_group = {}
-        for rid, data in absent_records.items():
+        for rid, data in sorted(absent_records.items()):
             d = data["date"]
             if d not in dates_group:
                 dates_group[d] = {}
@@ -130,11 +138,9 @@ async def update_absent_board(guild):
             for time_slot in sorted_times:
                 items = dates_group[date_str][time_slot]
                 
-                # Kumpul semua rekod dalam satu masa slot yang sama supaya jadi 1 ID tunggal
                 record_ids = [str(item[0]) for item in items]
                 ids_str = ", ".join(record_ids)
                 
-                # Cantumkan emoji admin yang absent
                 absent_emojis = []
                 cover_emojis = []
                 
@@ -161,15 +167,23 @@ async def update_absent_board(guild):
 
     if bento_tracker:
         bento_list = []
-        for uid, count in bento_tracker.items():
+        for uid, info in bento_tracker.items():
             emoji = VP_AND_EXEC.get(uid, "🍱")
-            bento_list.append(f"{emoji} <@{uid}>: `{count}` Bento(s)")
+            count = info["count"]
+            paid_status = "✅ [Sudah Bayar]" if info["paid"] else "❌ [Belum Bayar]"
+            
+            bento_item = f"{emoji} <@{uid}>: `{count}` Bento(s) — {paid_status}"
+            if info["logs"]:
+                logs_str = ", ".join(info["logs"])
+                bento_item += f"\n   └ *Covered: {logs_str}*"
+            bento_list.append(bento_item)
+            
         bento_text = "\n".join(bento_list)
     else:
         bento_text = "No Bento rewards claimed yet."
         
     embed.add_field(name="🍱 Bento Leaderboard (VP & Exec)", value=bento_text, inline=False)
-    embed.set_footer(text="Use /absent | /cover | /edit_record | /delete_record")
+    embed.set_footer(text="Use /absent | /cover | /pay_bento | /clear_paid_bento | /delete_record")
 
     if absent_message_id:
         try:
@@ -183,7 +197,7 @@ async def update_absent_board(guild):
     absent_message_id = msg.id
 
 # ==============================================================================
-# 4. SLASH COMMANDS (/absent, /cover, /edit_record, /delete_record)
+# 4. SLASH COMMANDS
 # ==============================================================================
 @bot.tree.command(name="absent", description="Report leave/absence for yourself or another admin")
 async def absent(
@@ -192,7 +206,6 @@ async def absent(
     time_slot: str, 
     target_admin: discord.Member = None
 ):
-    global record_counter
     await interaction.response.defer(ephemeral=True)
     user_id = interaction.user.id
     
@@ -210,7 +223,6 @@ async def absent(
     target_date = date.upper()
     target_time = time_slot.upper()
     
-    # Semak sama ada sudah ada rekod untuk tarikh & masa yang sama
     existing_record_id = None
     for rid, data in absent_records.items():
         if data["date"] == target_date and data["time"] == target_time:
@@ -218,7 +230,6 @@ async def absent(
             break
 
     if existing_record_id:
-        # Jika dah ada, cantumkan emoji ke dalam rekod sedia ada (supaya tak perlu buat ID baru)
         current_data = absent_records[existing_record_id]
         current_emojis = [e.strip() for e in current_data['absent_emoji'].split('&')]
         if my_emoji not in current_emojis:
@@ -230,15 +241,13 @@ async def absent(
         await update_absent_board(interaction.guild)
         return
 
-    # Kalau belum ada, buat ID baru
-    current_id = record_counter
-    record_counter += 1
+    current_id = get_next_available_id()
     
     absent_records[current_id] = {
         "date": target_date,
         "time": target_time,
         "absent_emoji": my_emoji,
-        "cover_emoji": []  # List kosong untuk tampung max 2 cover
+        "cover_emoji": []
     }
     
     target_name = target_admin.display_name if target_admin else "yourself"
@@ -308,6 +317,10 @@ async def cover(
         return
         
     my_emoji = ALL_ADMINS[covering_admin_id]
+    record_data = absent_records[record_id]
+    shift_date = record_data["date"]
+    shift_time = record_data["time"]
+    log_entry = f"{shift_date} ({shift_time})"
 
     if chosen_action == "uncover":
         covers = absent_records[record_id].get("cover_emoji", [])
@@ -321,8 +334,12 @@ async def cover(
         covers.remove(my_emoji)
         absent_records[record_id]["cover_emoji"] = covers
         
-        if covering_admin_id in bento_tracker and bento_tracker[covering_admin_id] > 0:
-            bento_tracker[covering_admin_id] -= 1
+        # Kurangkan bento dan buang log jika ada
+        if covering_admin_id in bento_tracker:
+            if bento_tracker[covering_admin_id]["count"] > 0:
+                bento_tracker[covering_admin_id]["count"] -= 1
+            if log_entry in bento_tracker[covering_admin_id]["logs"]:
+                bento_tracker[covering_admin_id]["logs"].remove(log_entry)
             
         await interaction.followup.send(f"🔄 Cover status removed for {my_emoji} from Record ID `{record_id}`.", ephemeral=True)
         await update_absent_board(interaction.guild)
@@ -337,11 +354,8 @@ async def cover(
         return
 
     is_vp_or_exec = covering_admin_id in VP_AND_EXEC
-    record_data = absent_records[record_id]
-    shift_time = record_data["time"]
     absent_emoji_str = record_data["absent_emoji"]
     
-    # Semak partner cover
     is_partner_cover = False
     if shift_time in SHIFT_PARTNERS:
         partner_map = SHIFT_PARTNERS[shift_time]
@@ -354,7 +368,10 @@ async def cover(
     earned_bento = False
     if is_vp_or_exec and not is_partner_cover:
         if my_emoji not in covers:
-            bento_tracker[covering_admin_id] = bento_tracker.get(covering_admin_id, 0) + 1
+            if covering_admin_id not in bento_tracker:
+                bento_tracker[covering_admin_id] = {"count": 0, "logs": [], "paid": False}
+            bento_tracker[covering_admin_id]["count"] += 1
+            bento_tracker[covering_admin_id]["logs"].append(log_entry)
             earned_bento = True
 
     if my_emoji not in covers:
@@ -370,6 +387,35 @@ async def cover(
     else:
         await interaction.followup.send(f"✅ {target_name} covered this shift!", ephemeral=True)
         
+    await update_absent_board(interaction.guild)
+
+@bot.tree.command(name="pay_bento", description="Mark an admin's Bento status as Paid (Sudah Bayar)")
+async def pay_bento(interaction: discord.Interaction, target_admin: discord.Member):
+    await interaction.response.defer(ephemeral=True)
+    if interaction.user.id not in ALL_ADMINS:
+        await interaction.followup.send("❌ You are not authorized.", ephemeral=True)
+        return
+        
+    if target_admin.id not in bento_tracker:
+        await interaction.followup.send(f"❌ {target_admin.display_name} has no Bento records.", ephemeral=True)
+        return
+        
+    bento_tracker[target_admin.id]["paid"] = True
+    await interaction.followup.send(f"✅ Marked Bento status for {target_admin.display_name} as **Sudah Bayar**.", ephemeral=True)
+    await update_absent_board(interaction.guild)
+
+@bot.tree.command(name="clear_paid_bento", description="Clear/Remove admins whose Bento have been paid")
+async def clear_paid_bento(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    if interaction.user.id not in ALL_ADMINS:
+        await interaction.followup.send("❌ You are not authorized.", ephemeral=True)
+        return
+        
+    paid_users = [uid for uid, info in bento_tracker.items() if info["paid"]]
+    for uid in paid_users:
+        del bento_tracker[uid]
+        
+    await interaction.followup.send(f"🧹 Cleared {len(paid_users)} paid Bento record(s) from the leaderboard.", ephemeral=True)
     await update_absent_board(interaction.guild)
 
 @bot.tree.command(name="delete_record", description="Delete an absent record from the board without giving bentos")
