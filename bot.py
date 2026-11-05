@@ -85,11 +85,11 @@ ABSENT_CHANNEL_ID = 1372224968535834635
 # --- Global Trackers ---
 absent_message_id = None
 absent_records = {}
-# bento_tracker structure: {user_id: {"count": int, "logs": [str], "paid": bool}}
+# Menyimpan rekod cover aktif untuk setiap record_id: {record_id: {admin_id: log_string}}
+active_covers_tracker = {}
 bento_tracker = {}
 
 def get_next_available_id():
-    """Kitar semula ID: Cari nombor kecil pertama yang kosong"""
     existing_ids = set(absent_records.keys())
     candidate = 1
     while candidate in existing_ids:
@@ -168,6 +168,8 @@ async def update_absent_board(guild):
     if bento_tracker:
         bento_list = []
         for uid, info in bento_tracker.items():
+            if info["count"] <= 0 and not info["logs"]:
+                continue
             emoji = VP_AND_EXEC.get(uid, "🍱")
             count = info["count"]
             paid_status = "✅ [Sudah Bayar]" if info["paid"] else "❌ [Belum Bayar]"
@@ -178,7 +180,7 @@ async def update_absent_board(guild):
                 bento_item += f"\n   └ *Covered: {logs_str}*"
             bento_list.append(bento_item)
             
-        bento_text = "\n".join(bento_list)
+        bento_text = "\n".join(bento_list) if bento_list else "No Bento rewards claimed yet."
     else:
         bento_text = "No Bento rewards claimed yet."
         
@@ -276,14 +278,31 @@ async def edit_record(
         await interaction.followup.send("❌ Please provide a new date or time slot to update.", ephemeral=True)
         return
         
+    record_data = absent_records[record_id]
+    old_date = record_data["date"]
+    old_time = record_data["time"]
+    
     changes = []
     if new_date:
-        absent_records[record_id]["date"] = new_date.upper()
+        record_data["date"] = new_date.upper()
         changes.append(f"Date -> {new_date.upper()}")
     if new_time_slot:
-        absent_records[record_id]["time"] = new_time_slot.upper()
+        record_data["time"] = new_time_slot.upper()
         changes.append(f"Time -> {new_time_slot.upper()}")
         
+    new_date_str = record_data["date"]
+    new_time_str = record_data["time"]
+    new_log = f"{new_date_str} ({new_time_str})"
+    old_log = f"{old_date} ({old_time})"
+    
+    # Kemaskini log Bento jika rekod ini ada admin yang sudah cover
+    if record_id in active_covers_tracker:
+        for admin_id, logged_msg in list(active_covers_tracker[record_id].items()):
+            if admin_id in bento_tracker and old_log in bento_tracker[admin_id]["logs"]:
+                bento_tracker[admin_id]["logs"].remove(old_log)
+                bento_tracker[admin_id]["logs"].append(new_log)
+                active_covers_tracker[record_id][admin_id] = new_log
+
     await interaction.followup.send(f"✏️ Record ID `{record_id}` updated! ({', '.join(changes)})", ephemeral=True)
     await update_absent_board(interaction.guild)
 
@@ -334,12 +353,15 @@ async def cover(
         covers.remove(my_emoji)
         absent_records[record_id]["cover_emoji"] = covers
         
-        # Kurangkan bento dan buang log jika ada
-        if covering_admin_id in bento_tracker:
-            if bento_tracker[covering_admin_id]["count"] > 0:
-                bento_tracker[covering_admin_id]["count"] -= 1
-            if log_entry in bento_tracker[covering_admin_id]["logs"]:
-                bento_tracker[covering_admin_id]["logs"].remove(log_entry)
+        # Bersihkan tracker dan kurangkan bento serta log yang berkaitan secara tepat
+        if record_id in active_covers_tracker and covering_admin_id in active_covers_tracker[record_id]:
+            tracked_log = active_covers_tracker[record_id][covering_admin_id]
+            if covering_admin_id in bento_tracker:
+                if bento_tracker[covering_admin_id]["count"] > 0:
+                    bento_tracker[covering_admin_id]["count"] -= 1
+                if tracked_log in bento_tracker[covering_admin_id]["logs"]:
+                    bento_tracker[covering_admin_id]["logs"].remove(tracked_log)
+            del active_covers_tracker[record_id][covering_admin_id]
             
         await interaction.followup.send(f"🔄 Cover status removed for {my_emoji} from Record ID `{record_id}`.", ephemeral=True)
         await update_absent_board(interaction.guild)
@@ -372,6 +394,10 @@ async def cover(
                 bento_tracker[covering_admin_id] = {"count": 0, "logs": [], "paid": False}
             bento_tracker[covering_admin_id]["count"] += 1
             bento_tracker[covering_admin_id]["logs"].append(log_entry)
+            
+            if record_id not in active_covers_tracker:
+                active_covers_tracker[record_id] = {}
+            active_covers_tracker[record_id][covering_admin_id] = log_entry
             earned_bento = True
 
     if my_emoji not in covers:
@@ -432,6 +458,17 @@ async def delete_record(interaction: discord.Interaction, record_id: int):
         return
         
     deleted_item = absent_records.pop(record_id)
+    
+    # Padam juga log bento yang berkaitan jika rekod ini dipadam
+    if record_id in active_covers_tracker:
+        for admin_id, logged_msg in active_covers_tracker[record_id].items():
+            if admin_id in bento_tracker:
+                if bento_tracker[admin_id]["count"] > 0:
+                    bento_tracker[admin_id]["count"] -= 1
+                if logged_msg in bento_tracker[admin_id]["logs"]:
+                    bento_tracker[admin_id]["logs"].remove(logged_msg)
+        del active_covers_tracker[record_id]
+
     await interaction.followup.send(f"🗑️ Record ID `{record_id}` ({deleted_item['date']} - {deleted_item['time']}) deleted.", ephemeral=True)
     await update_absent_board(interaction.guild)
 
