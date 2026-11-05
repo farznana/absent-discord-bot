@@ -63,10 +63,10 @@ FLOATER_ADMINS = {
 ALL_ADMINS = {**PRESIDENT_ADMINS, **VP_ADMINS, **EXECUTIVE_ADMINS, **FLOATER_ADMINS}
 VP_AND_EXEC = {**VP_ADMINS, **EXECUTIVE_ADMINS}
 
-# --- Official Shift Partners Mapping ---
+# --- Official Shift Partners Mapping (Updated) ---
 SHIFT_PARTNERS = {
     "12PM-2PM": {"💖": "🔮", "🔮": "💖"},
-    "6PM-8PM": {"🎀": "🥃", "🥃": "🎀"},
+    "8PM-10PM": {"🥃": "🍑", "🍑": "🥃"},  # 🥃 & 🍑 berpasangan di slot 8PM-10PM
     "10PM-12AM": {"🦄": "⭐", "⭐": "🦄"},
 }
 
@@ -95,7 +95,6 @@ MONTH_MAP = {
 }
 
 def parse_date_str(date_str):
-    """Menukar format tarikh teks (cth: '4 NOV 2026') kepada objek tarikh Python untuk perbandingan"""
     try:
         parts = date_str.strip().split()
         if len(parts) >= 3:
@@ -129,7 +128,7 @@ async def on_ready():
 # ==============================================================================
 # 3. BACKGROUND TASK: AUTO-DELETE PAST DATES
 # ==============================================================================
-@tasks.loop(hours=1) # Semak setiap 1 jam secara automatik
+@tasks.loop(hours=1)
 async def auto_cleanup_task():
     global absent_records
     if not absent_records:
@@ -145,9 +144,7 @@ async def auto_cleanup_task():
             
     if expired_ids:
         for rid in expired_ids:
-            # Padam rekod dari absent_records
             absent_records.pop(rid, None)
-            # Bersihkan juga tracker cover yang berkaitan
             if rid in active_covers_tracker:
                 for admin_id, logged_msg in active_covers_tracker[rid].items():
                     if admin_id in bento_tracker:
@@ -157,7 +154,6 @@ async def auto_cleanup_task():
                             bento_tracker[admin_id]["logs"].remove(logged_msg)
                 del active_covers_tracker[rid]
                 
-        # Update board selepas cleanup
         for guild in bot.guilds:
             channel = guild.get_channel(ABSENT_CHANNEL_ID)
             if channel:
@@ -435,6 +431,7 @@ async def cover(
     is_vp_or_exec = covering_admin_id in VP_AND_EXEC
     absent_emoji_str = record_data["absent_emoji"]
     
+    # Semak partner cover (🥃 & 🍑 sekarang rasmi berpasangan pada 8PM-10PM)
     is_partner_cover = False
     if shift_time in SHIFT_PARTNERS:
         partner_map = SHIFT_PARTNERS[shift_time]
