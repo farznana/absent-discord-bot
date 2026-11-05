@@ -1,7 +1,8 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 import threading
+from datetime import datetime, date
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ==============================================================================
@@ -85,9 +86,27 @@ ABSENT_CHANNEL_ID = 1372224968535834635
 # --- Global Trackers ---
 absent_message_id = None
 absent_records = {}
-# Menyimpan rekod cover aktif untuk setiap record_id: {record_id: {admin_id: log_string}}
 active_covers_tracker = {}
 bento_tracker = {}
+
+MONTH_MAP = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12
+}
+
+def parse_date_str(date_str):
+    """Menukar format tarikh teks (cth: '4 NOV 2026') kepada objek tarikh Python untuk perbandingan"""
+    try:
+        parts = date_str.strip().split()
+        if len(parts) >= 3:
+            day = int(parts[0])
+            month_str = parts[1][:3].upper()
+            year = int(parts[2])
+            month = MONTH_MAP.get(month_str, 1)
+            return date(year, month, day)
+    except Exception:
+        pass
+    return None
 
 def get_next_available_id():
     existing_ids = set(absent_records.keys())
@@ -99,6 +118,8 @@ def get_next_available_id():
 @bot.event
 async def on_ready():
     print(f"Absent Info Bot connected as {bot.user}")
+    if not auto_cleanup_task.is_running():
+        auto_cleanup_task.start()
     try:
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} slash command(s).")
@@ -106,7 +127,45 @@ async def on_ready():
         print(f"Failed to sync slash commands: {e}")
 
 # ==============================================================================
-# 3. ABSENT BOARD RENDERER
+# 3. BACKGROUND TASK: AUTO-DELETE PAST DATES
+# ==============================================================================
+@tasks.loop(hours=1) # Semak setiap 1 jam secara automatik
+async def auto_cleanup_task():
+    global absent_records
+    if not absent_records:
+        return
+    
+    today = date.today()
+    expired_ids = []
+    
+    for rid, data in absent_records.items():
+        parsed_date = parse_date_str(data["date"])
+        if parsed_date and parsed_date < today:
+            expired_ids.append(rid)
+            
+    if expired_ids:
+        for rid in expired_ids:
+            # Padam rekod dari absent_records
+            absent_records.pop(rid, None)
+            # Bersihkan juga tracker cover yang berkaitan
+            if rid in active_covers_tracker:
+                for admin_id, logged_msg in active_covers_tracker[rid].items():
+                    if admin_id in bento_tracker:
+                        if bento_tracker[admin_id]["count"] > 0:
+                            bento_tracker[admin_id]["count"] -= 1
+                        if logged_msg in bento_tracker[admin_id]["logs"]:
+                            bento_tracker[admin_id]["logs"].remove(logged_msg)
+                del active_covers_tracker[rid]
+                
+        # Update board selepas cleanup
+        for guild in bot.guilds:
+            channel = guild.get_channel(ABSENT_CHANNEL_ID)
+            if channel:
+                await update_absent_board(guild)
+                break
+
+# ==============================================================================
+# 4. ABSENT BOARD RENDERER
 # ==============================================================================
 async def update_absent_board(guild):
     global absent_message_id
@@ -130,7 +189,7 @@ async def update_absent_board(guild):
             dates_group[d][t].append((rid, data))
             
         text_content = ""
-        for date_str in sorted(dates_group.keys()):
+        for date_str in sorted(dates_group.keys(), key=lambda x: (parse_date_str(x) or date.max)):
             text_content += f"\n**[{date_str}]**\n"
             
             sorted_times = sorted(dates_group[date_str].keys(), key=lambda x: TIME_ORDER.get(x, 99))
@@ -199,7 +258,7 @@ async def update_absent_board(guild):
     absent_message_id = msg.id
 
 # ==============================================================================
-# 4. SLASH COMMANDS
+# 5. SLASH COMMANDS
 # ==============================================================================
 @bot.tree.command(name="absent", description="Report leave/absence for yourself or another admin")
 async def absent(
@@ -295,7 +354,6 @@ async def edit_record(
     new_log = f"{new_date_str} ({new_time_str})"
     old_log = f"{old_date} ({old_time})"
     
-    # Kemaskini log Bento jika rekod ini ada admin yang sudah cover
     if record_id in active_covers_tracker:
         for admin_id, logged_msg in list(active_covers_tracker[record_id].items()):
             if admin_id in bento_tracker and old_log in bento_tracker[admin_id]["logs"]:
@@ -353,7 +411,6 @@ async def cover(
         covers.remove(my_emoji)
         absent_records[record_id]["cover_emoji"] = covers
         
-        # Bersihkan tracker dan kurangkan bento serta log yang berkaitan secara tepat
         if record_id in active_covers_tracker and covering_admin_id in active_covers_tracker[record_id]:
             tracked_log = active_covers_tracker[record_id][covering_admin_id]
             if covering_admin_id in bento_tracker:
@@ -459,7 +516,6 @@ async def delete_record(interaction: discord.Interaction, record_id: int):
         
     deleted_item = absent_records.pop(record_id)
     
-    # Padam juga log bento yang berkaitan jika rekod ini dipadam
     if record_id in active_covers_tracker:
         for admin_id, logged_msg in active_covers_tracker[record_id].items():
             if admin_id in bento_tracker:
