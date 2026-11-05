@@ -50,6 +50,7 @@ VP_ADMINS = {
 EXECUTIVE_ADMINS = {
     1527320411082068018: "🥃",  # fanaem00 (Executive)
     1322558573699403918: "⭐",  # fthestarss (Executive)
+    753681817776947282: "🐸",  # renzoor145 (Executive)
 }
 
 FLOATER_ADMINS = {
@@ -66,6 +67,7 @@ VP_AND_EXEC = {**VP_ADMINS, **EXECUTIVE_ADMINS}
 # --- Official Shift Partners Mapping ---
 SHIFT_PARTNERS = {
     "12PM-2PM": {"💖": "🔮", "🔮": "💖"},
+    "6PM-8PM": {"🎀": "🐸", "🐸": "🎀"},
     "8PM-10PM": {"🥃": "🍑", "🍑": "🥃"},  # 🥃 & 🍑 are partners at 8PM-10PM
     "10PM-12AM": {"🦄": "⭐", "⭐": "🦄"},
 }
