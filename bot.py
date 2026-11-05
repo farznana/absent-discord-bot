@@ -63,10 +63,10 @@ FLOATER_ADMINS = {
 ALL_ADMINS = {**PRESIDENT_ADMINS, **VP_ADMINS, **EXECUTIVE_ADMINS, **FLOATER_ADMINS}
 VP_AND_EXEC = {**VP_ADMINS, **EXECUTIVE_ADMINS}
 
-# --- Official Shift Partners Mapping (Updated) ---
+# --- Official Shift Partners Mapping ---
 SHIFT_PARTNERS = {
     "12PM-2PM": {"💖": "🔮", "🔮": "💖"},
-    "8PM-10PM": {"🥃": "🍑", "🍑": "🥃"},  # 🥃 & 🍑 berpasangan di slot 8PM-10PM
+    "8PM-10PM": {"🥃": "🍑", "🍑": "🥃"},  # 🥃 & 🍑 are partners at 8PM-10PM
     "10PM-12AM": {"🦄": "⭐", "⭐": "🦄"},
 }
 
@@ -227,7 +227,7 @@ async def update_absent_board(guild):
                 continue
             emoji = VP_AND_EXEC.get(uid, "🍱")
             count = info["count"]
-            paid_status = "✅ [Sudah Bayar]" if info["paid"] else "❌ [Belum Bayar]"
+            paid_status = "✅ [Paid]" if info["paid"] else "❌ [Unpaid]"
             
             bento_item = f"{emoji} <@{uid}>: `{count}` Bento(s) — {paid_status}"
             if info["logs"]:
@@ -431,7 +431,6 @@ async def cover(
     is_vp_or_exec = covering_admin_id in VP_AND_EXEC
     absent_emoji_str = record_data["absent_emoji"]
     
-    # Semak partner cover (🥃 & 🍑 sekarang rasmi berpasangan pada 8PM-10PM)
     is_partner_cover = False
     if shift_time in SHIFT_PARTNERS:
         partner_map = SHIFT_PARTNERS[shift_time]
@@ -469,7 +468,7 @@ async def cover(
         
     await update_absent_board(interaction.guild)
 
-@bot.tree.command(name="pay_bento", description="Mark an admin's Bento status as Paid (Sudah Bayar)")
+@bot.tree.command(name="pay_bento", description="Mark an admin's Bento status as Paid")
 async def pay_bento(interaction: discord.Interaction, target_admin: discord.Member):
     await interaction.response.defer(ephemeral=True)
     if interaction.user.id not in ALL_ADMINS:
@@ -481,7 +480,7 @@ async def pay_bento(interaction: discord.Interaction, target_admin: discord.Memb
         return
         
     bento_tracker[target_admin.id]["paid"] = True
-    await interaction.followup.send(f"✅ Marked Bento status for {target_admin.display_name} as **Sudah Bayar**.", ephemeral=True)
+    await interaction.followup.send(f"✅ Marked Bento status for {target_admin.display_name} as **Paid**.", ephemeral=True)
     await update_absent_board(interaction.guild)
 
 @bot.tree.command(name="clear_paid_bento", description="Clear/Remove admins whose Bento have been paid")
