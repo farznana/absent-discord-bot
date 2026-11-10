@@ -49,7 +49,6 @@ VP_ADMINS = {
 
 EXECUTIVE_ADMINS = {
     1527320411082068018: "🥃",  # fanaem00 (Executive)
-    1322558573699403918: "⭐",  # fthestarss (Executive)
     753681817776947282: "🐸",  # renzoor145 (Executive)
 }
 
@@ -58,7 +57,8 @@ FLOATER_ADMINS = {
     795323523132293160: "💐",  # gwendita_zai (Floater)
     1332012068798206073: "😘",  # lincy_2003_73773 (Floater)
     848524697205342278: "🐥",  # maxx_712 (Floater)
-    839186062240120833: "🐼",  # xpingux1 (Floater)
+    837199088922787850: "🌞",  # smolsanson (Floater)
+    1322558573699403918: "⭐",  # fthestarss (Floater)
 }
 
 ALL_ADMINS = {**PRESIDENT_ADMINS, **VP_ADMINS, **EXECUTIVE_ADMINS, **FLOATER_ADMINS}
@@ -68,8 +68,7 @@ VP_AND_EXEC = {**VP_ADMINS, **EXECUTIVE_ADMINS}
 SHIFT_PARTNERS = {
     "12PM-2PM": {"💖": "🔮", "🔮": "💖"},
     "6PM-8PM": {"🎀": "🐸", "🐸": "🎀"},
-    "8PM-10PM": {"🥃": "🍑", "🍑": "🥃"},  # 🥃 & 🍑 are partners at 8PM-10PM
-    "10PM-12AM": {"🦄": "⭐", "⭐": "🦄"},
+    "8PM-10PM": {"🥃": "🍑", "🍑": "🥃"},
 }
 
 # --- Time Slot Sorting Order ---
@@ -147,14 +146,7 @@ async def auto_cleanup_task():
     if expired_ids:
         for rid in expired_ids:
             absent_records.pop(rid, None)
-            if rid in active_covers_tracker:
-                for admin_id, logged_msg in active_covers_tracker[rid].items():
-                    if admin_id in bento_tracker:
-                        if bento_tracker[admin_id]["count"] > 0:
-                            bento_tracker[admin_id]["count"] -= 1
-                        if logged_msg in bento_tracker[admin_id]["logs"]:
-                            bento_tracker[admin_id]["logs"].remove(logged_msg)
-                del active_covers_tracker[rid]
+            active_covers_tracker.pop(rid, None)
                 
         for guild in bot.guilds:
             channel = guild.get_channel(ABSENT_CHANNEL_ID)
@@ -163,7 +155,7 @@ async def auto_cleanup_task():
                 break
 
 # ==============================================================================
-# 4. ABSENT BOARD RENDERER
+# 4. BEAUTIFIED ABSENT BOARD RENDERER (EMBED DESIGN)
 # ==============================================================================
 async def update_absent_board(guild):
     global absent_message_id
@@ -171,10 +163,15 @@ async def update_absent_board(guild):
     if not channel:
         return
 
-    embed = discord.Embed(title="📋 ABSENT & COVER SHIFT INFO", color=discord.Color.gold())
+    # Warna Embed yang elegan (Dark Gold / Warm Amber)
+    embed = discord.Embed(
+        title="🌟  P.I.Z.Z.I.N  •  ABSENT & COVER SCHEDULE", 
+        color=discord.Color.from_rgb(255, 193, 7)
+    )
     
+    # Bahagian 1: Jadual Absent & Cover yang disusun rapi
     if not absent_records:
-        embed.description = "No upcoming leave or absent records. Great job everyone!\n"
+        schedule_text = "```yaml\n✨ No upcoming leave or absent records. Great job everyone!\n```"
     else:
         dates_group = {}
         for rid, data in sorted(absent_records.items()):
@@ -186,9 +183,9 @@ async def update_absent_board(guild):
                 dates_group[d][t] = []
             dates_group[d][t].append((rid, data))
             
-        text_content = ""
+        schedule_lines = []
         for date_str in sorted(dates_group.keys(), key=lambda x: (parse_date_str(x) or date.max)):
-            text_content += f"\n**[{date_str}]**\n"
+            schedule_lines.append(f"📌 **[{date_str}]**")
             
             sorted_times = sorted(dates_group[date_str].keys(), key=lambda x: TIME_ORDER.get(x, 99))
             
@@ -216,12 +213,18 @@ async def update_absent_board(guild):
                             cover_emojis.append(c)
 
                 emoji_display = " & ".join(absent_emojis)
-                cover_display = f"【{' & '.join(cover_emojis)}】" if cover_emojis else "【 】"
+                cover_display = f"【{' & '.join(cover_emojis)}】" if cover_emojis else "【 ⏳ Looking for cover 】"
                 
-                text_content += f"• (ID: `{ids_str}`) {emoji_display} ▷ {time_slot} {cover_display}\n"
-                
-        embed.description = text_content
+                # Menggunakan blockquote (>) supaya nampak terletak dalam kotak/jalur kemas
+                schedule_lines.append(f"> ` ID: {ids_str} ` {emoji_display}  ──►  **{time_slot}**  {cover_display}")
+            
+            schedule_lines.append("") # Jarak kosong antara tarikh
+            
+        schedule_text = "\n".join(schedule_lines)
 
+    embed.add_field(name="📋 ACTIVE SHIFT STATUS", value=schedule_text, inline=False)
+
+    # Bahagian 2: Bento Leaderboard yang lebih teratur
     if bento_tracker:
         bento_list = []
         for uid, info in bento_tracker.items():
@@ -229,20 +232,22 @@ async def update_absent_board(guild):
                 continue
             emoji = VP_AND_EXEC.get(uid, "🍱")
             count = info["count"]
-            paid_status = "✅ [Paid]" if info["paid"] else "❌ [Unpaid]"
+            paid_status = "✅ `Paid`" if info["paid"] else "❌ `Unpaid`"
             
-            bento_item = f"{emoji} <@{uid}>: `{count}` Bento(s) — {paid_status}"
+            bento_item = f"• {emoji} <@{uid}>  •  **{count}** Bento(s)  {paid_status}"
             if info["logs"]:
-                logs_str = ", ".join(info["logs"])
-                bento_item += f"\n   └ *Covered: {logs_str}*"
+                logs_str = " • ".join(info["logs"])
+                bento_item += f"\n   └ 🕒 *{logs_str}*"
             bento_list.append(bento_item)
             
-        bento_text = "\n".join(bento_list) if bento_list else "No Bento rewards claimed yet."
+        bento_text = "\n".join(bento_list) if bento_list else "_No Bento rewards claimed yet._"
     else:
-        bento_text = "No Bento rewards claimed yet."
+        bento_text = "_No Bento rewards claimed yet._"
         
-    embed.add_field(name="🍱 Bento Leaderboard (VP & Exec)", value=bento_text, inline=False)
-    embed.set_footer(text="Use /absent | /cover | /pay_bento | /clear_paid_bento | /delete_record")
+    embed.add_field(name="🍱 BENTO REWARDS LEADERBOARD (VP & Exec)", value=bento_text, inline=False)
+    
+    # Footer yang ringkas & profesional
+    embed.set_footer(text="💡 Commands: /absent  |  /cover  |  /pay_bento  |  /clear_paid_bento  |  /delete_record")
 
     if absent_message_id:
         try:
@@ -513,15 +518,7 @@ async def delete_record(interaction: discord.Interaction, record_id: int):
         return
         
     deleted_item = absent_records.pop(record_id)
-    
-    if record_id in active_covers_tracker:
-        for admin_id, logged_msg in active_covers_tracker[record_id].items():
-            if admin_id in bento_tracker:
-                if bento_tracker[admin_id]["count"] > 0:
-                    bento_tracker[admin_id]["count"] -= 1
-                if logged_msg in bento_tracker[admin_id]["logs"]:
-                    bento_tracker[admin_id]["logs"].remove(logged_msg)
-        del active_covers_tracker[record_id]
+    active_covers_tracker.pop(record_id, None)
 
     await interaction.followup.send(f"🗑️ Record ID `{record_id}` ({deleted_item['date']} - {deleted_item['time']}) deleted.", ephemeral=True)
     await update_absent_board(interaction.guild)
