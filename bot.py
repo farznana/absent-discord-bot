@@ -44,7 +44,7 @@ VP_ADMINS = {
     1455238315405217893: "☻",    # tequila_qyla. (Vice President)
     626874233888440330: "🎀",  # inesfgguerreiro (Vice President - Red Ribbon)
     967001330361192520: "🍑",  # just2_peach (Vice President)
-    1384881169547530291: "🦄",  # blossiq12 (Vice President)
+    1568673840744104136: "🦄",  # blossiq1212 (Vice President)
 }
 
 EXECUTIVE_ADMINS = {
